@@ -61,15 +61,8 @@ void Organizer::waitForEventsToProcess() {
 }
 
 void Organizer::processEventQueue() {
-    /* Supposed to run from an independent thread.
-     This method should recursively spawn a httpClient until EventManager is empty*/
-    int failCounter = 0;
-
     do {
         cout << "sending " << std::to_string(em.count()) << " events" << endl;
-        if (failCounter > 30) {
-            break;  // Stop attempting to send. Retry at a later point in time when there is new data to send. Keep old data buffered
-        }
 
         event_mtx.lock();
         string json_out = em.getJson();
@@ -77,11 +70,9 @@ void Organizer::processEventQueue() {
         event_mtx.unlock();
 
         if (settings.hostname.length() > 0 && settings.id.length() > 0) {
-            httpClient client = httpClient(settings.hostname, ("/missions/" + settings.id + "/events"), settings.authorization, json_out);
-
-            if (client.status != httpClient::OK) {
-                failCounter++;
-            }
+            std::string url = settings.hostname + "/missions/" + settings.id + "/events";
+            httpClient client = httpClient(url, settings.authorization);
+            client.postHttp(json_out)
         }
 
         /* Sleep thread to let events queue up */
@@ -119,9 +110,10 @@ Organizer::status_response Organizer::createMission(const string& data) {
         // Make sure data is actual JSON
         json jsonData = json::parse(data);
 
-        httpClient client = httpClient(settings.hostname, "/missions", settings.authorization, jsonData.dump());
+        httpClient client = httpClient(settings.hostname + "/missions", settings.authorization);
+        client.httpPost(jsonData.dump())
         if (client.status == httpClient::OK) {
-            return parseCreateMission(client.getResult());
+            return parseCreateMission(client.getResponse());
         } else if (client.status == httpClient::CONNECTION_FAILED) {
             return CONNECTION_FAILED;
         }
